@@ -34,5 +34,6 @@ can't find crate for `core`
 之后陈林峰学长又展示了busybox的构建过程，然后成功运行了alien项目。 
 
 过程中，学长提到使用的musl是一个预编译的musl工具链。在理解musl是一个c标准库实现后， \
-我转去搜索musl，然后找到了https://musl.cc/#binaries，应该就是学长提到的预编译的musl工具链网站。 \
+我转去搜索musl，然后找到了https://musl.cc/#binaries \
+，应该就是学长提到的预编译的musl工具链网站。 \
 直接下载riscv64-linux-musl-cross的预编译工具链后，解压到某个目录下，然后添加PATH环境变量之后就可以使用riscv64-linux-musl-cc了
