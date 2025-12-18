@@ -106,3 +106,4 @@ git = "https://github.com/Starry-Old/axprocess-old.git"
 git = "https://github.com/Starry-Old/axsignal-old.git"
 ```
 
+至此，`make build`成功，在此之后`make run_on_qemu`也成功运行起来了。
