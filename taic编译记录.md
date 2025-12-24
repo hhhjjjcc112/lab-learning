@@ -107,3 +107,99 @@ git = "https://github.com/Starry-Old/axsignal-old.git"
 ```
 
 至此，`make build`成功，在此之后`make run_on_qemu`也成功运行起来了。
+
+接下来尝试编译FPGA代码，执行`make build_fpga` \
+结果报错
+```
+hjch@LAPTOP-RF714NVU:~/taic$ make build_fpga
+make -C taic-rocket-chip build
+make[1]: Entering directory '/home/hjch/taic/taic-rocket-chip'
+/home/hjch/taic/taic-rocket-chip/rocket-chip/Makefrag:3: *** Please set environment variable RISCV. Please take a look at README.  Stop.
+make[1]: Leaving directory '/home/hjch/taic/taic-rocket-chip'
+make: *** [Makefile:36: build_fpga] Error 2
+```
+根据readme的提示，我需要先编译一套riscv工具链, 来自项目`https://github.com/chipsalliance/rocket-tools`
+
+还是一样，先拉取所有子模块（因为网络原因折腾了一阵...）
+```bash
+git submodule update --init --recursive
+```
+然后按照说明安装所有依赖项
+```bash
+sudo apt-get install autoconf automake autotools-dev curl libmpc-dev libmpfr-dev libgmp-dev libusb-1.0-0-dev gawk build-essential bison flex texinfo gperf libtool patchutils bc zlib1g-dev device-tree-compiler pkg-config libexpat-dev libfl-dev
+```
+然后设置环境变量`RISCV`作为工具链安装地址，接着运行编译脚本
+```bash
+./build.sh
+```
+但是遇到问题`Error: unrecognized opcode fence.i'`
+
+在该项目的issue中找到了解决方案 [issue#85](https://github.com/chipsalliance/rocket-tools/issues/85) \
+将`build.sh`中的`CC= CXX= build_project riscv-pk --prefix=$RISCV --host=riscv64-unknown-elf`后添加一个`--with-arch=rv64gc_zifencei`参数
+
+修改后重新运行`./build.sh`，成功编译
+
+接着回到`taic`目录，设置环境变量`RISCV`为刚编译好的工具链路径，执行`make build_fpga`,显示没有找到`vivado`命令 \
+`vivado`是Xilinx的FPGA开发工具，需要先安装, 根据`scripts/fpga.mk`中的提示，我选择安装了`2022.2`版本的个人版`Vivado`。在此之后还安装了`jdk17`用于运行vivado
+
+此后尝试打开`vivado`，出现了一个奇怪的报错，大致是说不支持地区设置为`C.UTF-8` \
+最开始我通过设置`export LC_ALL=en_US.UTF-8`，但是依然报错 \
+```
+hjch@LAPTOP-RF714NVU:~/taic$ vivado
+/bin/bash: warning: setlocale: LC_ALL: cannot change locale (en_US.UTF-8)
+/bin/bash: warning: setlocale: LC_ALL: cannot change locale (en_US.UTF-8)
+/opt/Xilinx/Vivado/2022.2/bin/rdiArgs.sh: line 31: warning: setlocale: LC_ALL: cannot change locale (en_US.UTF-8)
+/bin/bash: warning: setlocale: LC_ALL: cannot change locale (en_US.UTF-8)
+terminate called after throwing an instance of 'std::runtime_error'
+  what():  locale::facet::_S_create_c_locale name not valid
+/opt/Xilinx/Vivado/2022.2/bin/rdiArgs.sh: line 312:  2247 Aborted                 (core dumped) "$RDI_PROG" "$@"
+```
+通过搜索，发现有人遇到了相同的问题 [链接](https://adaptivesupport.amd.com/s/question/0D54U00006FYojlSAD/vivado-20222-on-ubuntu-with-error-lcall-cannot-change-locale-enusutf8?language=en_US) \
+解决方案是执行
+```bash
+sudo locale-gen "en_US.UTF-8"
+sudo update-locale LANG=en_US.UTF-8
+```
+（我猜大致含义是生成en_US.UTF-8相关的语言环境） \
+配置后又出现如下错误
+```
+vivado
+application-specific initialization failed: couldn't load file "librdi_commontasks.so": libtinfo.so.5: cannot open shared object file: No such file or directory
+```
+使用apt安装libtinfo5(`sudo apt install libtinfo5`)之后，成功打开了vivado gui 
+
+在`source /opt/Xilinx/Vivado/2022.2/settings64.sh`后，重新执行`make build_fpga`, 出现如下问题
+```
+/usr/bin/env: ‘python’: Permission denied
+```
+```
+ERROR: [Common 17-69] Command failed: Part 'xczu15eg-ffvb1156-2-i' not found
+```
+对于第一个问题，通过创建`python3`的软链接`python`解决 \
+对于第二个问题，是因为我安装时的选项选择了非付费版本，没有包含`xczu15eg-ffvb1156-2-i`这个型号的FPGA \
+因此重新安装时选择了完整版vivado，然后使用了第三方证书激活成功 \
+
+但是之后又遇到了新的问题
+```
+INFO: [Common 17-14] Message 'Synth 8-7052' appears 100 times and further instances of the messages will be disabled. Use the Tcl command set_msg_config to change the current settings.
+/opt/Xilinx/Vivado/2022.2/bin/rdiArgs.sh: line 312: 32165 Killed                  "$RDI_PROG" "$@"
+[Sat Dec 20 13:38:03 2025] synth_1 finished
+WARNING: [Vivado 12-13638] Failed runs(s) : 'synth_1'
+wait_on_runs: Time (s): cpu = 01:30:00 ; elapsed = 00:51:58 . Memory (MB): peak = 3206.840 ; gain = 0.000 ; free physical = 1838 ; free virtual = 3483
+# launch_runs impl_1 -to_step write_bitstream -jobs 6
+ERROR: [Common 17-70] Application Exception: Failed to launch run 'impl_1' due to failures in the following run(s):
+synth_1
+These failed run(s) need to be reset prior to launching 'impl_1' again.
+
+INFO: [Common 17-206] Exiting Vivado at Sat Dec 20 13:38:04 2025...
+make[1]: *** [Makefile:103: bitstream] Error 1
+make[1]: Leaving directory '/home/hjch/taic/taic-rocket-chip'
+make: *** [Makefile:38: build_fpga] Error 2
+```
+这个问题是因为内存不足导致的，我的真实机有32GB内存， \
+但是我是在WSL2中运行的，WSL2默认只分配了16GB内存（也就是一半） \
+因此我调整了WSL2的内存配置，增加到32GB \
+之后`make build_fpga`，缺少了`xsct`命令
+
+经过搜索，发现`xsct`是vitis工具集中的一个命令行工具 \
+因此我重新安装了`Vitis`（基本全是安装的坑），最后成功了
